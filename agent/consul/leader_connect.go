@@ -396,6 +396,20 @@ func (s *Server) initializeSecondaryCA(provider ca.Provider, primaryRoots struct
 		needsNewIntermediate = true
 	}
 
+	if activeIntermediate != "" {
+		intermediateCert, err := connect.ParseCert(activeIntermediate)
+		if err != nil {
+			return fmt.Errorf("error parsing active intermediate cert: %v", err)
+		}
+
+		// Get a new intermediate from the primary DC if the existing
+		// intermediate is due for renew.
+		if moreThanHalfTimeHasPassed(time.Now(), intermediateCert.NotBefore,
+			intermediateCert.NotAfter) {
+			needsNewIntermediate = true
+		}
+	}
+
 	newIntermediate := false
 	if needsNewIntermediate {
 		csr, err := provider.GenerateIntermediateCSR()
@@ -852,4 +866,10 @@ func (s *Server) configuredSecondaryCA() bool {
 	s.actingSecondaryLock.RLock()
 	defer s.actingSecondaryLock.RUnlock()
 	return s.actingSecondaryCA
+}
+
+func moreThanHalfTimeHasPassed(now, notBefore, notAfter time.Time) bool {
+	interval := notAfter.Sub(notBefore)
+	half := interval / 2
+	return now.After(notBefore.Add(half))
 }
